@@ -1,0 +1,9 @@
+# macOS가 자동으로 만드는 파일
+.DS_Store
+
+# Python 실행 시 생기는 임시 파일
+__pycache__/
+
+# 개인 설정 (Claude Code 로컬 설정 등)
+.claude/settings.local.json
+.env
