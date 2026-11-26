@@ -7,3 +7,7 @@ __pycache__/
 # 개인 설정 (Claude Code 로컬 설정 등)
 .claude/settings.local.json
 .env
+
+# Vercel 연결 정보 (이 컴퓨터 전용)
+.vercel
+.env*
