@@ -18,5 +18,11 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+class Server(http.server.ThreadingHTTPServer):
+    # 브라우저가 파일 20여 개를 한꺼번에 요청해도 연결이 끊기지 않도록 대기열을 넉넉하게 (기본값 5)
+    request_queue_size = 128
+    daemon_threads = True
+
+
 print(f"하루노트 서버: http://localhost:{PORT}  (끄려면 Ctrl + C)")
-http.server.ThreadingHTTPServer(("", PORT), NoCacheHandler).serve_forever()
+Server(("", PORT), NoCacheHandler).serve_forever()

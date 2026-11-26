@@ -194,12 +194,24 @@ function graphHtml(L, allRows) {
   const width = PAD * 2 + maxLane * LANE;
   const rowIndex = new Map();
   allRows.forEach((row, r) => row.forEach((c) => rowIndex.set(c.id, r)));
+  // 맨 위 "지금" 줄: 진행 중인 브랜치를 모두 한 줄에 모읍니다. (왼쪽 칸부터 차례로)
+  const openHeads = Object.keys(repo.branches)
+    .filter((k) => k !== vcs.MAIN)
+    .map((k) => repo.commits[repo.branches[k]])
+    .sort((a, b) => laneOf.get(a.branch) - laneOf.get(b.branch));
+  const TOP = openHeads.length ? 1 : 0; // "지금" 줄이 있으면 아래 기록들을 한 줄씩 내림
+  const nowY = ROW / 2;
+
   const x = (c) => PAD + (laneOf.get(c.branch) ?? 0) * LANE;
-  const y = (c) => rowIndex.get(c.id) * ROW + ROW / 2;
+  const y = (c) => (rowIndex.get(c.id) + TOP) * ROW + ROW / 2;
 
   // main 줄기: 맨 위부터 "히스토리 시작"까지 한 줄로
   const init = repo.commits[repo.branches[vcs.MAIN]];
   let paths = `<path d="M${PAD} 0V${y(init)}" style="stroke:${MAIN_COLOR}"/>`;
+  // 진행 중인 브랜치: 마지막 기록에서 "지금" 줄까지 선을 이어 올립니다.
+  openHeads.forEach((h) => {
+    paths += `<path d="M${x(h)} ${y(h)}V${nowY}" style="stroke:${laneColor(laneOf.get(h.branch))}"/>`;
+  });
   visible.forEach((c) => {
     // 브랜치의 첫 기록: 한 줄 아래 main 줄기에서 갈라져 나옵니다.
     if (vcs.START_KINDS.includes(c.kind)) {
@@ -236,7 +248,8 @@ function graphHtml(L, allRows) {
       const r = cls === 'head' ? 6.5 : 5;
       return `<circle class="node ${cls}" cx="${x(c)}" cy="${y(c)}" r="${r}" style="--c:${laneColor(laneOf.get(c.branch) ?? 0)}"/>`;
     })
-    .join('');
+    .join('') +
+    openHeads.map((h) => `<circle class="node now" cx="${x(h)}" cy="${nowY}" r="6.5" style="--c:${laneColor(laneOf.get(h.branch))}"/>`).join('');
 
   const isOpenHead = (c) => c.branch !== vcs.MAIN && repo.branches[c.branch] === c.id;
   const rowStyle = `height:${ROW}px;min-width:${width + 220}px`;
@@ -283,10 +296,34 @@ function graphHtml(L, allRows) {
       </div>`;
   };
 
-  const rowsHtml = rows.map((row) => (row.length > 1 ? groupRow(row) : singleRow(row[0]))).join('');
+  // "지금" 줄: 진행 중인 할 일 전부 (칩 색·순서 = 그래프의 칸 색·순서)
+  const nowRow = () => {
+    const today = todayYmd();
+    const chips = openHeads
+      .map((h) => {
+        const task = h.taskId ? store.get('todo', h.taskId) : null;
+        const overdue = task && task.due && task.due < today;
+        return `
+        <button type="button" class="commit-chip open ${h.id === selectedId ? 'sel' : ''}" data-commit="${h.id}"
+          style="--c:${laneColor(laneOf.get(h.branch))}" title="${esc(task ? task.title : h.label)}${task && task.due ? ` · 마감 ${relativeDay(task.due)}` : ''}">
+          <i class="chip-dot"></i>${esc(task ? task.title : h.label)}${overdue ? '<span class="chip-warn">지남</span>' : ''}
+        </button>`;
+      })
+      .join('');
+    return `
+      <div class="vc-row group now-row" role="group" aria-label="지금 진행 중인 할 일 ${openHeads.length}개" style="${rowStyle}">
+        ${gutter}
+        <span class="vc-text">
+          <span class="chip-line">${chips}</span>
+          <span class="vc-meta"><strong class="now-label">지금</strong> · 진행 중인 할 일 ${openHeads.length}개</span>
+        </span>
+      </div>`;
+  };
+
+  const rowsHtml = (TOP ? nowRow() : '') + rows.map((row) => (row.length > 1 ? groupRow(row) : singleRow(row[0]))).join('');
 
   return `
-    <svg class="vc-svg" width="${width}" height="${rows.length * ROW}" aria-hidden="true">${paths}${nodes}</svg>
+    <svg class="vc-svg" width="${width}" height="${(rows.length + TOP) * ROW}" aria-hidden="true">${paths}${nodes}</svg>
     <div class="vc-rows">${rowsHtml}</div>`;
 }
 

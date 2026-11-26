@@ -603,3 +603,9 @@ dialog#modal.wide { width: min(860px, calc(100vw - 24px)); }
   font-size: 14px; padding: 5px 8px; max-width: 150px; min-width: 0;
 }
 .prop-row input[type="date"]:focus, .prop-row select:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* 그래프 맨 위 "지금" 줄: 진행 중인 할 일을 모두 모아 보여줌 */
+.vc-row.now-row { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.now-label { color: var(--accent); font-weight: 700; }
+.vc-svg .node.now { fill: var(--surface); stroke: var(--c); stroke-width: 3; }
+.chip-warn { margin-left: 4px; font-size: 11px; font-weight: 700; color: var(--red); }
