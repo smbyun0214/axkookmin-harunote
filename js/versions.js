@@ -124,7 +124,19 @@ export function render(el) {
   draw(el);
 }
 
+// 칩 줄·카드 줄·그래프의 가로 스크롤 위치 (다시 그려도 제자리에 있도록 기억)
+const scrollMemory = new Map();
+
 function draw(el) {
+  el.querySelectorAll('[data-scroll-key]').forEach((box) => scrollMemory.set(box.dataset.scrollKey, box.scrollLeft));
+  drawContent(el);
+  el.querySelectorAll('[data-scroll-key]').forEach((box) => {
+    const left = scrollMemory.get(box.dataset.scrollKey);
+    if (left) box.scrollLeft = left;
+  });
+}
+
+function drawContent(el) {
   const L = vcs.layout();
   const desc = [...L.commits].reverse(); // 최신이 위
   if (!selectedId || !L.repo.commits[selectedId]) selectedId = desc[0].id;
@@ -164,7 +176,7 @@ function draw(el) {
           <h2 class="section-title">그래프</h2>
           <span class="legend"><span><i class="dot" style="background:${MAIN_COLOR}"></i>main</span><span><i class="dot" style="background:${BRANCH_COLORS[0]}"></i>할 일 브랜치</span></span>
         </div>
-        <div class="inset vc-graph">${graphHtml(L, rows)}</div>
+        <div class="inset vc-graph" data-scroll-key="graph">${graphHtml(L, rows)}</div>
         ${rows.length > limit ? `<button type="button" class="btn more-btn" data-more="1">이전 기록 ${Math.min(PAGE, rows.length - limit)}줄 더 보기</button>` : ''}
       </section>
       <aside class="section detail-col">
@@ -290,7 +302,7 @@ function graphHtml(L, allRows) {
       <div class="vc-row group ${group.some((c) => c.id === selectedId) ? 'sel' : ''}" role="group" aria-label="할 일 ${group.length}개 추가" style="${rowStyle}">
         ${gutter}
         <span class="vc-text">
-          <span class="chip-line">${chips}</span>
+          <span class="chip-line" data-scroll-key="group-${newest.id}">${chips}</span>
           <span class="vc-meta">할 일 ${group.length}개 추가 · ${fmtAgo(oldest.at)} ~ ${fmtAgo(newest.at)}</span>
         </span>
       </div>`;
@@ -314,7 +326,7 @@ function graphHtml(L, allRows) {
       <div class="vc-row group now-row" role="group" aria-label="지금 진행 중인 할 일 ${openHeads.length}개" style="${rowStyle}">
         ${gutter}
         <span class="vc-text">
-          <span class="chip-line">${chips}</span>
+          <span class="chip-line" data-scroll-key="now">${chips}</span>
           <span class="vc-meta"><strong class="now-label">지금</strong> · 진행 중인 할 일 ${openHeads.length}개</span>
         </span>
       </div>`;
@@ -361,7 +373,7 @@ function openBranchesHtml(L) {
         <h2 class="section-title">진행 중인 브랜치<span class="count">${keys.length}</span></h2>
         <span class="muted small">누르면 그래프에서 위치를 보여줘요</span>
       </div>
-      <div class="branch-cards">${cards}</div>
+      <div class="branch-cards" data-scroll-key="cards">${cards}</div>
     </section>`;
 }
 
