@@ -7,13 +7,13 @@ import * as store from './store.js';
 import * as vcs from './vcs.js';
 import { esc, icon } from './ui.js';
 import { openItem } from './links.js';
-import { fmtAgo, isoToYmd, fmtDate, pad } from './dates.js';
+import { fmtAgo, isoToYmd, fmtDate, pad, todayYmd, relativeDay } from './dates.js';
 
 // 그래프 크기 — 줄 높이(ROW), 가지 사이 간격(LANE)을 바꾸면 그래프 모양이 바뀝니다
 const ROW = 52;
 const LANE = 16;
 const PAD = 18;
-const PAGE = 60; // 한 번에 보여줄 기록 수
+const PAGE = 60; // 한 번에 보여줄 줄 수
 const MAIN_COLOR = 'var(--blue)';
 const BRANCH_COLORS = ['var(--orange)', 'var(--green)', 'var(--purple)', 'var(--pink)', 'var(--teal)', 'var(--indigo)', 'var(--yellow)', 'var(--red)'];
 
@@ -122,9 +122,15 @@ export function miniGraphHtml(taskId) {
 
 export function render(el) {
   el.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-commit],[data-more],[data-open-task]');
+    const t = e.target.closest('[data-focus-commit],[data-commit],[data-more],[data-open-task]');
     if (!t) return;
-    if (t.dataset.commit) {
+    if (t.dataset.focusCommit) {
+      // 진행 중 브랜치 카드: 그 브랜치의 최신 기록을 선택하고 그래프에서 그 줄로 이동
+      focusCommit(t.dataset.focusCommit);
+      draw(el);
+      const row = el.querySelector(`.vc-rows [data-commit="${t.dataset.focusCommit}"]`);
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (t.dataset.commit) {
       selectedId = t.dataset.commit;
       draw(el);
       if (window.innerWidth <= 1000) el.querySelector('.detail-col').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -143,6 +149,7 @@ function draw(el) {
   const desc = [...L.commits].reverse(); // 최신이 위
   if (!selectedId || !L.repo.commits[selectedId]) selectedId = desc[0].id;
   const s = vcs.stats();
+  const rows = groupRows(desc);
 
   const stat = (color, iconName, num, label) => `
     <div class="stat" style="--tile:var(--${color})">
@@ -165,14 +172,16 @@ function draw(el) {
       ${stat('blue', 'clock', s.commits, '전체 기록')}
     </div>
 
+    ${openBranchesHtml(L)}
+
     <div class="graph-layout">
       <section class="section graph-col">
         <div class="section-head">
           <h2 class="section-title">그래프</h2>
           <span class="legend"><span><i class="dot" style="background:${MAIN_COLOR}"></i>main</span><span><i class="dot" style="background:${BRANCH_COLORS[0]}"></i>할 일 브랜치</span></span>
         </div>
-        <div class="inset vc-graph">${graphHtml(L, desc)}</div>
-        ${desc.length > limit ? `<button type="button" class="btn more-btn" data-more="1">이전 기록 ${Math.min(PAGE, desc.length - limit)}개 더 보기</button>` : ''}
+        <div class="inset vc-graph">${graphHtml(L, rows)}</div>
+        ${rows.length > limit ? `<button type="button" class="btn more-btn" data-more="1">이전 기록 ${Math.min(PAGE, rows.length - limit)}줄 더 보기</button>` : ''}
       </section>
       <aside class="section detail-col">
         <div class="section-head"><h2 class="section-title">선택한 기록</h2></div>
@@ -183,14 +192,26 @@ function draw(el) {
 
 // ---------- git 그래프 그리기 ----------
 // 기록 하나가 한 줄(ROW). 브랜치마다 정해진 세로 칸(LANE)에 점을 찍고, 부모 기록과 선으로 잇습니다.
-function graphHtml(L, desc) {
-  const { repo, index, laneOf, maxLane } = L;
-  const total = desc.length;
-  const visible = desc.slice(0, limit);
+// 단, 사이에 다른 기록 없이 연달아 "할 일 추가"한 기록들은 한 줄에 묶습니다. (각자 다른 칸이라 겹치지 않음)
+function groupRows(desc) {
+  const rows = [];
+  desc.forEach((c) => {
+    const last = rows[rows.length - 1];
+    if (c.kind === 'create' && last && last.every((k) => k.kind === 'create')) last.push(c);
+    else rows.push([c]);
+  });
+  return rows; // [[기록], [기록, 기록, 기록], ...] 최신 줄이 먼저
+}
+
+function graphHtml(L, allRows) {
+  const { repo, laneOf, maxLane } = L;
+  const rows = allRows.slice(0, limit);
+  const visible = rows.flat();
   const width = PAD * 2 + maxLane * LANE;
-  const rowOf = (c) => total - 1 - index.get(c.id);
+  const rowIndex = new Map();
+  allRows.forEach((row, r) => row.forEach((c) => rowIndex.set(c.id, r)));
   const x = (c) => PAD + (laneOf.get(c.branch) ?? 0) * LANE;
-  const y = (c) => rowOf(c) * ROW + ROW / 2;
+  const y = (c) => rowIndex.get(c.id) * ROW + ROW / 2;
 
   let paths = '';
   visible.forEach((c) => {
@@ -226,28 +247,94 @@ function graphHtml(L, desc) {
     })
     .join('');
 
-  const rows = visible
-    .map((c) => {
-      const isBranchHead = c.branch !== vcs.MAIN && repo.branches[c.branch] === c.id;
-      const pills = [
-        c.id === mainHead ? `<span class="ref current" style="--c:${MAIN_COLOR}">${icon('branch')}main</span>` : '',
-        isBranchHead ? `<span class="ref" style="--c:${laneColor(laneOf.get(c.branch))}">진행 중</span>` : '',
-      ].join('');
-      const action = c.kind === 'edit' ? c.message : KIND[c.kind].text;
+  const isOpenHead = (c) => c.branch !== vcs.MAIN && repo.branches[c.branch] === c.id;
+  const rowStyle = `height:${ROW}px;min-width:${width + 220}px`;
+  const gutter = `<span class="vc-gutter" style="width:${width}px"></span>`;
+
+  // 기록 하나짜리 줄
+  const singleRow = (c) => {
+    const pills = [
+      c.id === mainHead ? `<span class="ref current" style="--c:${MAIN_COLOR}">${icon('branch')}main</span>` : '',
+      isOpenHead(c) ? `<span class="ref" style="--c:${laneColor(laneOf.get(c.branch))}">진행 중</span>` : '',
+    ].join('');
+    const action = c.kind === 'edit' ? c.message : KIND[c.kind].text;
+    return `
+      <button type="button" class="vc-row ${c.id === selectedId ? 'sel' : ''}" data-commit="${c.id}" style="${rowStyle}">
+        ${gutter}
+        <span class="vc-text">
+          <span class="vc-msg">${pills}<span class="vc-msg-text">${esc(c.kind === 'init' ? '히스토리 시작' : c.label)}</span></span>
+          <span class="vc-meta">${esc(action)} · ${fmtAgo(c.at)}</span>
+        </span>
+      </button>`;
+  };
+
+  // 연달아 추가한 할 일 여러 개를 묶은 줄: 할 일마다 누를 수 있는 칩
+  const groupRow = (group) => {
+    const oldest = group[group.length - 1];
+    const newest = group[0];
+    const chips = [...group]
+      .reverse() // 먼저 추가한 것이 왼쪽
+      .map(
+        (c) => `
+        <button type="button" class="commit-chip ${c.id === selectedId ? 'sel' : ''} ${isOpenHead(c) ? 'open' : ''}" data-commit="${c.id}"
+          style="--c:${laneColor(laneOf.get(c.branch))}" title="${esc(c.label)} · ${fullTime(c.at)}${isOpenHead(c) ? ' · 진행 중' : ''}">
+          <i class="chip-dot"></i>${esc(c.label)}
+        </button>`
+      )
+      .join('');
+    return `
+      <div class="vc-row group ${group.some((c) => c.id === selectedId) ? 'sel' : ''}" role="group" aria-label="할 일 ${group.length}개 추가" style="${rowStyle}">
+        ${gutter}
+        <span class="vc-text">
+          <span class="chip-line">${chips}</span>
+          <span class="vc-meta">할 일 ${group.length}개 추가 · ${fmtAgo(oldest.at)} ~ ${fmtAgo(newest.at)}</span>
+        </span>
+      </div>`;
+  };
+
+  const rowsHtml = rows.map((row) => (row.length > 1 ? groupRow(row) : singleRow(row[0]))).join('');
+
+  return `
+    <svg class="vc-svg" width="${width}" height="${rows.length * ROW}" aria-hidden="true">${paths}${nodes}</svg>
+    <div class="vc-rows">${rowsHtml}</div>`;
+}
+
+// ---------- 진행 중인 브랜치 카드 (그래프 위) ----------
+function openBranchesHtml(L) {
+  const { repo, laneOf } = L;
+  const keys = Object.keys(repo.branches).filter((k) => k !== vcs.MAIN);
+  if (!keys.length) return '';
+  const today = todayYmd();
+  const all = Object.values(repo.commits);
+  const cards = keys
+    .map((key) => {
+      const head = repo.commits[repo.branches[key]];
+      const own = all.filter((c) => c.branch === key);
+      const start = own.reduce((a, b) => (a.seq < b.seq ? a : b));
+      return { key, head, start, count: own.length, task: head.taskId ? store.get('todo', head.taskId) : null };
+    })
+    .sort((a, b) => (a.task?.due || '9999').localeCompare(b.task?.due || '9999')) // 마감이 가까운 순
+    .map(({ key, head, start, count, task }) => {
+      const due = task && task.due;
+      const overdue = due && due < today;
       return `
-        <button type="button" class="vc-row ${c.id === selectedId ? 'sel' : ''}" data-commit="${c.id}" style="height:${ROW}px;min-width:${width + 200}px">
-          <span class="vc-gutter" style="width:${width}px"></span>
-          <span class="vc-text">
-            <span class="vc-msg">${pills}<span class="vc-msg-text">${esc(c.kind === 'init' ? '히스토리 시작' : c.label)}</span></span>
-            <span class="vc-meta">${esc(action)} · ${fmtAgo(c.at)}</span>
+        <button type="button" class="branch-card" data-focus-commit="${head.id}" style="--c:${laneColor(laneOf.get(key) ?? 1)}">
+          <span class="bc-title">${esc(task ? task.title : head.label)}</span>
+          <span class="bc-meta">
+            <span class="${overdue ? 'overdue' : ''}">${due ? `마감 ${overdue ? '지남 · ' : ''}${relativeDay(due)}` : '마감 없음'}</span>
+            <span>${fmtAgo(start.at)} 시작 · 기록 ${count}개</span>
           </span>
         </button>`;
     })
     .join('');
-
   return `
-    <svg class="vc-svg" width="${width}" height="${visible.length * ROW}" aria-hidden="true">${paths}${nodes}</svg>
-    <div class="vc-rows">${rows}</div>`;
+    <section class="section">
+      <div class="section-head">
+        <h2 class="section-title">진행 중인 브랜치<span class="count">${keys.length}</span></h2>
+        <span class="muted small">누르면 그래프에서 위치를 보여줘요</span>
+      </div>
+      <div class="branch-cards">${cards}</div>
+    </section>`;
 }
 
 // ---------- 선택한 기록의 자세한 내용 ----------

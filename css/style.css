@@ -372,6 +372,34 @@ details.section[open] > summary .chev { transform: rotate(90deg); }
 .kv-label { width: 64px; flex-shrink: 0; font-size: 13px; color: var(--muted); }
 .kv-value { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
 .more-btn { width: 100%; margin-top: 12px; }
+
+/* 진행 중인 브랜치 카드 */
+.branch-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.branch-card {
+  position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 12px 14px 12px 18px; border: 0; border-radius: var(--radius); text-align: left;
+  background: var(--surface); box-shadow: var(--shadow); transition: transform 0.1s, background 0.12s;
+}
+.branch-card::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 4px; border-radius: 0 3px 3px 0; background: var(--c); }
+.branch-card:hover { transform: translateY(-1px); }
+.bc-title { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-meta { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); }
+.bc-meta .overdue { color: var(--red); font-weight: 600; }
+
+/* 연달아 추가한 할 일을 묶은 줄 */
+.vc-row.group { cursor: default; }
+.chip-line { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; padding: 1px 0; }
+.chip-line::-webkit-scrollbar { display: none; }
+.commit-chip {
+  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; max-width: 200px;
+  height: 24px; padding: 0 10px 0 8px; border: 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--c) 13%, transparent); color: var(--text);
+  font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.commit-chip:hover { background: color-mix(in srgb, var(--c) 22%, transparent); }
+.commit-chip.sel { box-shadow: 0 0 0 2px var(--c); }
+.chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); flex-shrink: 0; }
+.commit-chip.open .chip-dot { background: none; box-shadow: inset 0 0 0 2px var(--c); }
 .ref {
   display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 8px;
   border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap;
@@ -396,7 +424,7 @@ details.section[open] > summary .chev { transform: rotate(90deg); }
 .vc-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .vc-msg { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .vc-msg-text { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vc-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.vc-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vc-meta code, .mono { font-family: var(--mono); font-size: 11.5px; }
 .vc-detail-msg { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
 .vc-detail-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
@@ -517,4 +545,6 @@ dialog#modal.wide { width: min(860px, calc(100vw - 24px)); }
   .day .num { width: 28px; height: 28px; font-size: 14px; }
   .event-cell .time { min-width: 56px; }
   .cell-actions .btn .lbl { display: none; }
+  /* 진행 중 카드: 좁은 화면에서는 옆으로 밀어서 보기 */
+  .branch-cards { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(190px, 75%); overflow-x: auto; scrollbar-width: none; padding: 2px 2px 6px; }
 }
