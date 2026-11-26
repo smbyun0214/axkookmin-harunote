@@ -548,3 +548,58 @@ dialog#modal.wide { width: min(860px, calc(100vw - 24px)); }
   /* 진행 중 카드: 좁은 화면에서는 옆으로 밀어서 보기 */
   .branch-cards { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(190px, 75%); overflow-x: auto; scrollbar-width: none; padding: 2px 2px 6px; }
 }
+
+/* =========================================================
+   공통: hidden 속성은 항상 숨김 (버튼의 display 설정보다 우선)
+   ========================================================= */
+[hidden] { display: none !important; }
+
+/* =========================================================
+   추가 내용: 메모 · 리스트 · 체크리스트 (js/extras.js)
+   ========================================================= */
+.extras { display: flex; flex-direction: column; gap: 10px; }
+.extra-block { background: var(--fill); border-radius: 10px; padding: 8px 8px 8px 12px; display: flex; flex-direction: column; gap: 4px; }
+.extra-head { display: flex; align-items: center; justify-content: space-between; }
+.extra-title { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.extra-progress { font-weight: 500; color: var(--accent); font-variant-numeric: tabular-nums; }
+.extra-note {
+  width: 100%; min-height: 70px; resize: vertical; border: 0; background: none; padding: 2px 4px 4px 0;
+  color: var(--text); font-size: 15px; line-height: 1.6;
+}
+.extra-note:focus, .extra-input:focus { outline: none; }
+.extra-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.extra-item { display: flex; align-items: center; gap: 10px; min-height: 34px; }
+.extra-item + .extra-item { border-top: 0.5px solid var(--sep); }
+.extra-input { flex: 1; min-width: 0; border: 0; background: none; padding: 6px 0; font-size: 15px; color: var(--text); }
+.extra-input.done { color: var(--muted); text-decoration: line-through; }
+.bullet { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; margin: 0 4px 0 6px; }
+.check.sm { width: 18px; height: 18px; margin: 0 0 0 2px; }
+.check.sm:checked { background-size: 11px; }
+.extra-block .btn.plain { align-self: flex-start; margin-left: -6px; }
+.extra-add { display: flex; gap: 6px; flex-wrap: wrap; }
+.extra-add:not(:has(button:not([hidden]))) { display: none; }
+.badge.all-done { color: var(--green); }
+.side-empty { padding: 4px 14px 10px; font-size: 13px; color: var(--muted); line-height: 1.55; }
+
+/* =========================================================
+   사이드바 메뉴 끌어서 순서 바꾸기 (js/nav.js)
+   ========================================================= */
+.nav-group { display: flex; flex-direction: column; gap: 2px; }
+.nav-group .nav-item { cursor: grab; }
+.nav-group .nav-item:active { cursor: grabbing; }
+.nav-item.dragging { opacity: 0.45; background: var(--accent-soft); }
+
+/* 할 일 창 오른쪽: 위에는 마감일·우선순위·반복, 아래에는 히스토리 */
+.sheet-aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sheet-props { background: var(--fill); border-radius: var(--radius); padding: 4px 0; }
+.prop-row {
+  position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-height: 44px; padding: 4px 10px 4px 14px; font-size: 14px;
+}
+.prop-row + .prop-row::before { content: ""; position: absolute; top: 0; left: 14px; right: 0; height: 0.5px; background: var(--sep); }
+.prop-row > span { color: var(--text); white-space: nowrap; }
+.prop-row input[type="date"], .prop-row select {
+  border: 0; border-radius: 8px; background: var(--surface); color: var(--text);
+  font-size: 14px; padding: 5px 8px; max-width: 150px; min-width: 0;
+}
+.prop-row input[type="date"]:focus, .prop-row select:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }

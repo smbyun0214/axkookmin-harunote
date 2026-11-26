@@ -9,6 +9,7 @@ import { chipsHtml, linkBadge, registerEditor } from './links.js';
 import { todayYmd, relativeDay, nextDate, fmtShort, REPEAT_LABEL } from './dates.js';
 import { askIfNeeded } from './notify.js';
 import { focusTask, focusCommit, branchColorOf, miniGraphHtml } from './versions.js';
+import { extrasHtml, bindExtras, readExtras, extrasBadges } from './extras.js';
 
 export const PRIORITY = { high: '높음', mid: '보통', low: '낮음' };
 const P_ORDER = { high: 0, mid: 1, low: 2 };
@@ -27,6 +28,7 @@ export function rowHtml(t) {
     t.due ? `<span class="due ${overdue ? 'overdue' : ''}">${overdue ? '지남 · ' : ''}${relativeDay(t.due)}</span>` : '',
     t.repeat && t.repeat !== 'none' ? `<span title="${REPEAT_LABEL[t.repeat]} 반복">${icon('repeat', 'sm')}</span>` : '',
     t.remind ? `<span title="마감일 알림">${icon('bell', 'sm')}</span>` : '',
+    extrasBadges(t),
     linkBadge(t),
   ].join('');
   return `
@@ -53,8 +55,8 @@ export function toggleDone(id) {
   const t = store.get('todo', id);
   if (!t) return;
   const done = !t.done;
-  vcs.setDone(id, done); // 완료: 브랜치를 main에 합침 / 취소: 브랜치를 다시 만듦
-  if (done) toast('완료했어요 · 브랜치를 main에 합쳤어요');
+  vcs.setDone(id, done); // 완료: 히스토리에서 브랜치를 지움 / 취소: 브랜치를 다시 만듦
+  toast(done ? '완료했어요 · 히스토리에서 정리했어요' : '다시 열었어요 · main에서 새 브랜치를 만들었어요');
   if (done && t.repeat && t.repeat !== 'none' && t.due && !t.spawnedNext) {
     const next = nextDate(t.due, t.repeat);
     vcs.addTodo({ title: t.title, due: next, priority: t.priority, repeat: t.repeat, remind: t.remind });
@@ -132,23 +134,30 @@ export function openEditor(id, preset = {}) {
   if (id && !todo) return toast('할 일을 찾을 수 없어요');
   const d = todo || { title: preset.title || '', due: preset.due || '', priority: 'mid', repeat: 'none', remind: false };
 
-  const fieldsHtml = `
+  // 왼쪽: 제목과 내용(메모·리스트·체크리스트)
+  const mainHtml = `
     <input name="title" class="title-input" value="${esc(d.title)}" placeholder="할 일" aria-label="할 일" />
-    <div class="grid-2">
-      <label class="field"><span>마감일</span><input type="date" name="due" value="${d.due || ''}" /></label>
-      <label class="field"><span>우선순위</span><select name="priority">${options(PRIORITY, d.priority || 'mid')}</select></label>
-      <label class="field"><span>반복</span><select name="repeat">${options(REPEAT_LABEL, d.repeat || 'none')}</select></label>
-    </div>
-    <label class="toggle-row"><span>마감일 오전 9시에 알림</span><input type="checkbox" class="switch" name="remind" ${d.remind ? 'checked' : ''} /></label>
+    ${extrasHtml(d)}
     ${todo ? `<div class="linked">${chipsHtml(todo)}</div>` : ''}`;
 
-  // 이미 있는 할 일이면 오른쪽에 이 할 일의 git 그래프를 붙입니다.
-  const body = todo
-    ? `<div class="sheet-split">
-        <div class="sheet-main">${fieldsHtml}</div>
-        <aside class="sheet-side">${historyPanel(todo)}</aside>
-      </div>`
-    : fieldsHtml;
+  // 오른쪽 위: 마감일·우선순위·반복 (+ 마감일 알림)
+  const propsHtml = `
+    <div class="sheet-props">
+      <label class="prop-row"><span>마감일</span><input type="date" name="due" value="${d.due || ''}" /></label>
+      <label class="prop-row"><span>우선순위</span><select name="priority">${options(PRIORITY, d.priority || 'mid')}</select></label>
+      <label class="prop-row"><span>반복</span><select name="repeat">${options(REPEAT_LABEL, d.repeat || 'none')}</select></label>
+      <label class="prop-row"><span>마감일 9시 알림</span><input type="checkbox" class="switch" name="remind" ${d.remind ? 'checked' : ''} /></label>
+    </div>`;
+
+  // 오른쪽 아래: 이미 있는 할 일이면 이 할 일의 git 그래프
+  const body = `
+    <div class="sheet-split">
+      <div class="sheet-main">${mainHtml}</div>
+      <div class="sheet-aside">
+        ${propsHtml}
+        ${todo ? `<aside class="sheet-side">${historyPanel(todo)}</aside>` : ''}
+      </div>
+    </div>`;
 
   const actions = [];
   if (todo) {
@@ -171,6 +180,7 @@ export function openEditor(id, preset = {}) {
         priority: form.elements.priority.value,
         repeat: form.elements.repeat.value,
         remind: checked(form, 'remind'),
+        ...readExtras(form), // 메모 · 리스트 · 체크리스트
       };
       if (!fields.title) {
         toast('할 일을 입력해 주세요');
@@ -182,8 +192,8 @@ export function openEditor(id, preset = {}) {
         return true;
       }
       if (todo) {
-        const c = vcs.updateTodo(todo.id, fields);
-        toast(c ? '저장했어요 · 히스토리에 기록했어요' : '저장했어요 (바뀐 내용 없음)');
+        const r = vcs.updateTodo(todo.id, fields);
+        toast(!r.changed ? '저장했어요 (바뀐 내용 없음)' : r.recorded ? '저장했어요 · 히스토리에 기록했어요' : '저장했어요');
       } else {
         vcs.addTodo(fields);
         toast('할 일을 추가했어요 · main에서 브랜치를 만들었어요');
@@ -202,8 +212,9 @@ export function openEditor(id, preset = {}) {
     title: todo ? '할 일' : '새 할 일',
     body,
     actions,
-    wide: Boolean(todo),
+    wide: true,
     onOpen: (form) => {
+      bindExtras(form);
       const all = form.querySelector('[data-open-history]');
       if (all) all.addEventListener('click', () => goHistory(() => focusTask(todo.id)));
       form.querySelectorAll('[data-history-commit]').forEach((row) =>
@@ -215,17 +226,21 @@ export function openEditor(id, preset = {}) {
 
 // 편집 창 오른쪽: 이 할 일의 브랜치 상태 + 작은 git 그래프
 function historyPanel(todo) {
-  const open = vcs.isOpen(todo);
-  const count = vcs.taskCommits(todo.id).length;
-  const color = open ? branchColorOf(todo.branch) : 'var(--green)';
-  return `
+  const head = `
     <div class="side-head">
       <h3 class="section-title sm">히스토리</h3>
       <button type="button" class="btn plain sm" data-open-history="1">전체 보기 ${icon('chevR', 'sm')}</button>
-    </div>
+    </div>`;
+  // 완료한 할 일은 히스토리에서 지워졌으므로 그래프 대신 안내만 보여줍니다.
+  if (!vcs.isOpen(todo)) {
+    return `${head}
+      <div class="side-status"><span class="ref current" style="--c:var(--green)">${icon('done')}완료됨</span></div>
+      <p class="side-empty">완료한 할 일은 히스토리에서 정리돼요. 완료를 취소하면 main에서 새 브랜치가 생겨요.</p>`;
+  }
+  return `${head}
     <div class="side-status">
-      <span class="ref current" style="--c:${color}">${icon(open ? 'branch' : 'merge')}${open ? '진행 중 브랜치' : 'main에 합쳐짐'}</span>
-      <span class="muted small">기록 ${count}개</span>
+      <span class="ref current" style="--c:${branchColorOf(todo.branch)}">${icon('branch')}진행 중 브랜치</span>
+      <span class="muted small">기록 ${vcs.taskCommits(todo.id).length}개</span>
     </div>
     ${miniGraphHtml(todo.id)}`;
 }

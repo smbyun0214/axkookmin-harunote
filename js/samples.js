@@ -12,7 +12,7 @@ import * as vcs from './vcs.js';
 import { ymd } from './dates.js';
 
 export const SAMPLE_COUNT = 100;
-const SEED_VERSION = 3; // 샘플 구조가 바뀌면 숫자를 올려 다시 만들게 합니다
+const SEED_VERSION = 4; // 샘플 구조가 바뀌면 숫자를 올려 다시 만들게 합니다
 const OPEN_COUNT = 6; // 진행 중으로 남길 샘플 수
 const REMOVED_COUNT = 4; // 휴지통에 넣을 샘플 수
 
@@ -31,6 +31,16 @@ const TOPICS = [
 ];
 
 const PRIORITY_NEXT = { mid: 'high', high: 'mid', low: 'mid' };
+
+// 추가 내용(체크리스트·메모·리스트) 샘플
+const STEPS = [
+  ['자료 찾아보기', '초안 만들기', '다시 읽고 다듬기'],
+  ['할 일 쪼개기', '30분 집중해서 하기', '결과 정리하기'],
+  ['준비물 챙기기', '실행하기', '느낀 점 적기'],
+  ['예시 3개 찾기', '내 방식으로 써 보기', '피드백 받기'],
+];
+const NOTES = ['이번 주 안에 끝내기', '막히면 멘토에게 질문하기', '오전에 집중해서 하기', '완료 기준: 남에게 설명할 수 있을 정도'];
+const LISTS = [['노트북', '충전기', '메모장'], ['참고 링크 정리', '관련 강의 2강'], ['질문 1: 팀 문화', '질문 2: 성장 지원']];
 
 // 처음 열 때(또는 샘플 구조가 바뀌었을 때) 한 번만 실행됩니다.
 export function seedIfNeeded() {
@@ -104,6 +114,11 @@ function makeSamples() {
       createdAt: iso(created),
       updatedAt: iso(created),
     };
+    // 진행 중인 일은 모두, 나머지는 일부만 추가 내용을 붙입니다.
+    const pick = (arr) => arr[Math.floor(rand() * arr.length)];
+    if (status === 'open' || rand() < 0.3) todo.checklist = pick(STEPS).map((text) => ({ text, done: false }));
+    if (status === 'open' ? rand() < 0.6 : rand() < 0.2) todo.note = pick(NOTES);
+    if (rand() < 0.15) todo.list = [...pick(LISTS)];
     events.push({ at: todo.createdAt, type: 'create', todo });
 
     // 약 40%는 중간에 마감일이나 우선순위를 고친 기록이 있습니다.
@@ -120,6 +135,17 @@ function makeSamples() {
       }
       events.push({ at: iso(at), type: 'edit', todo, changes: vcs.diffTodo(before, todo) });
       todo.updatedAt = iso(at);
+    }
+
+    // 체크리스트가 있으면 진행한 만큼 체크한 기록을 남깁니다. (완료한 일은 모두 체크)
+    if (todo.checklist) {
+      const target = status === 'done' ? todo.checklist.length : Math.floor(rand() * todo.checklist.length);
+      if (target > 0) {
+        const before = { ...todo, checklist: todo.checklist.map((c) => ({ ...c })) };
+        todo.checklist = todo.checklist.map((c, k) => ({ ...c, done: k < target }));
+        const at = created + (lastAt - created) * 0.9;
+        events.push({ at: iso(at), type: 'edit', todo, changes: vcs.diffTodo(before, todo) });
+      }
     }
 
     if (status === 'done') {

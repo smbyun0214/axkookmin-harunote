@@ -6,10 +6,7 @@ import { icon, emptyState } from './ui.js';
 import { todayYmd, fmtDate, eventsOn, isoToYmd } from './dates.js';
 import { eventRowHtml } from './calendar.js';
 import { rowsHtml } from './todo.js';
-import { miniHtml } from './memo.js';
 import { permission } from './notify.js';
-
-const RECENT_MEMO_COUNT = 3; // 최근 메모를 몇 개 보여줄지
 
 export function render(el) {
   const today = todayYmd();
@@ -17,7 +14,6 @@ export function render(el) {
   const todos = store.list('todo');
   const openToday = todos.filter((t) => !t.done && t.due && t.due <= today);
   const doneToday = todos.filter((t) => t.done && t.doneAt && isoToYmd(t.doneAt) === today);
-  const memos = [...store.list('memo')].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, RECENT_MEMO_COUNT);
 
   const notifyBanner =
     permission() === 'default'
@@ -61,12 +57,5 @@ export function render(el) {
       </div>
       <div class="inset">${openToday.length || doneToday.length ? rowsHtml([...openToday, ...doneToday]) : emptyState('오늘 할 일이 없어요')}</div>
     </section>
-
-    <section class="section">
-      <div class="section-head">
-        <h2 class="section-title">최근 메모</h2>
-        <button type="button" class="btn plain sm" data-new="memo">${icon('plus', 'sm')}메모</button>
-      </div>
-      <div class="inset">${memos.length ? memos.map(miniHtml).join('') : emptyState('아직 메모가 없어요')}</div>
-    </section>`;
+`;
 }

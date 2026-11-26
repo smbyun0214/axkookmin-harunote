@@ -22,8 +22,6 @@ const KIND = {
   init: { icon: 'branch', text: '히스토리 시작' },
   create: { icon: 'plus', text: '할 일 추가 · 브랜치 생성' },
   edit: { icon: 'pencil', text: '수정' },
-  merge: { icon: 'merge', text: '완료 · main에 합침' },
-  remove: { icon: 'trash', text: '삭제 · 브랜치 종료' },
   reopen: { icon: 'undo', text: '다시 열기 · 브랜치 생성' },
   restore: { icon: 'restore', text: '휴지통에서 복구' },
 };
@@ -55,67 +53,49 @@ export function focusTask(taskId) {
 }
 
 // ---------- 할 일 하나의 작은 그래프 (할 일 편집 창 오른쪽) ----------
-// 이 할 일의 기록 + main에서 갈라진 지점만 골라, main(왼쪽)과 브랜치(오른쪽) 두 줄로 그립니다.
+// 이 할 일의 기록을 브랜치 줄(오른쪽)에, 맨 아래에 main에서 갈라진 지점을 그립니다.
 export function miniGraphHtml(taskId) {
-  const repo = vcs.getRepo();
-  const own = vcs.taskCommits(taskId);
+  const own = vcs.taskCommits(taskId).reverse(); // 최신이 위
   if (!own.length) return '';
   const { laneOf } = vcs.layout();
-  const ids = new Set(own.map((c) => c.id));
-  own.forEach((c) => {
-    const p = c.parents[0] && repo.commits[c.parents[0]];
-    if (c.branch !== vcs.MAIN && p && p.branch === vcs.MAIN) ids.add(p.id); // 갈라진 지점
-  });
-  const list = [...ids].map((id) => repo.commits[id]).sort((a, b) => b.seq - a.seq); // 최신이 위
-
   const R = 50;
   const XM = 16; // main 줄
   const XB = 38; // 브랜치 줄
   const W = 54;
-  const row = new Map(list.map((c, i) => [c.id, i]));
-  const x = (c) => (c.branch === vcs.MAIN ? XM : XB);
-  const y = (c) => row.get(c.id) * R + R / 2;
-  const colorOf = (c) => laneColor(laneOf.get(c.branch) ?? 0);
+  const color = laneColor(laneOf.get(own[0].branch) ?? 1);
+  const y = (i) => i * R + R / 2;
+  const anchorY = y(own.length); // 맨 아래 "main" 줄
 
-  // main 줄: 중간에 다른 할 일 기록이 있어 생략된 구간은 점선으로
-  const mains = list.filter((c) => c.branch === vcs.MAIN);
-  let paths = mains.length > 1 ? `<path class="gap" d="M${XM} ${y(mains[0])}V${y(mains[mains.length - 1])}" style="stroke:${MAIN_COLOR}"/>` : '';
-  list.forEach((c) => {
-    c.parents.forEach((pid, k) => {
-      const p = repo.commits[pid];
-      if (!p || !row.has(pid)) return;
-      const [x1, y1, x2, y2] = [x(c), y(c), x(p), y(p)];
-      let d;
-      if (x1 === x2) d = `M${x1} ${y1}V${y2}`;
-      else if (k === 0) d = `M${x1} ${y1}V${y2 - R}C${x1} ${y2 - R / 2} ${x2} ${y2 - R / 2} ${x2} ${y2}`;
-      else d = `M${x1} ${y1}C${x1} ${y1 + R / 2} ${x2} ${y1 + R / 2} ${x2} ${y1 + R}V${y2}`;
-      paths += `<path d="${d}" style="stroke:${colorOf(k === 0 ? c : p)}"/>`;
-    });
+  let paths = `<path d="M${XM} 0V${anchorY}" style="stroke:${MAIN_COLOR}"/>`; // main 줄기
+  own.forEach((c, i) => {
+    if (vcs.START_KINDS.includes(c.kind)) {
+      paths += `<path d="M${XB} ${y(i)}C${XB} ${y(i) + R / 2} ${XM} ${y(i) + R / 2} ${XM} ${y(i) + R}" style="stroke:${color}"/>`;
+    } else if (i + 1 < own.length) {
+      paths += `<path d="M${XB} ${y(i)}V${y(i + 1)}" style="stroke:${color}"/>`;
+    }
   });
-  const nodes = list
-    .map((c) => {
-      const cls = c.kind === 'remove' ? 'ended' : c.kind === 'merge' && c.parents.length > 1 ? 'merge' : '';
-      return `<circle class="node ${cls}" cx="${x(c)}" cy="${y(c)}" r="${cls === 'merge' ? 6 : 5}" style="--c:${colorOf(c)}"/>`;
-    })
-    .join('');
-  const rows = list
-    .map((c) => {
-      const isOwn = c.taskId === taskId;
-      const text = !isOwn ? 'main · 여기서 갈라짐' : c.kind === 'edit' ? c.message : KIND[c.kind].text;
-      return `
+  const nodes =
+    own.map((c, i) => `<circle class="node" cx="${XB}" cy="${y(i)}" r="5" style="--c:${color}"/>`).join('') +
+    `<circle class="node" cx="${XM}" cy="${anchorY}" r="5" style="--c:${MAIN_COLOR}"/>`;
+  const rows =
+    own
+      .map(
+        (c) => `
         <button type="button" class="vc-row" data-history-commit="${c.id}" style="height:${R}px" title="히스토리에서 보기">
           <span class="vc-gutter" style="width:${W}px"></span>
           <span class="vc-text">
-            <span class="vc-msg-text ${isOwn ? '' : 'muted'}">${esc(text)}</span>
+            <span class="vc-msg-text">${esc(c.kind === 'edit' ? c.message : KIND[c.kind].text)}</span>
             <span class="vc-meta">${fmtAgo(c.at)}</span>
           </span>
-        </button>`;
-    })
-    .join('');
+        </button>`
+      )
+      .join('') +
+    `<div class="vc-row" style="height:${R}px"><span class="vc-gutter" style="width:${W}px"></span>
+      <span class="vc-text"><span class="vc-msg-text muted">main · 여기서 갈라짐</span></span></div>`;
 
   return `
     <div class="mini-graph">
-      <svg class="vc-svg" width="${W}" height="${list.length * R}" aria-hidden="true">${paths}${nodes}</svg>
+      <svg class="vc-svg" width="${W}" height="${(own.length + 1) * R}" aria-hidden="true">${paths}${nodes}</svg>
       <div class="vc-rows">${rows}</div>
     </div>`;
 }
@@ -162,14 +142,18 @@ function draw(el) {
     <header class="page-head">
       <div>
         <h1 class="page-title">히스토리</h1>
-        <p class="page-sub">할 일을 추가하면 main에서 브랜치가 갈라지고, 완료하면 main에 합쳐지며 브랜치가 사라져요.</p>
+        <p class="page-sub">할 일을 추가하면 main에서 브랜치가 갈라지고, 완료하면 그 브랜치는 히스토리에서 사라져요. 지금 진행 중인 일만 보여요.</p>
       </div>
     </header>
 
     <div class="stats">
       ${stat('purple', 'branch', s.open, '진행 중 브랜치')}
-      ${stat('green', 'merge', s.merged, 'main에 합친 일')}
-      ${stat('blue', 'clock', s.commits, '전체 기록')}
+      ${stat('blue', 'clock', s.commits, '진행 중 기록')}
+      <button type="button" class="stat" data-goto="history" style="--tile:var(--green)">
+        <span class="tile">${icon('done')}</span>
+        <span class="stat-num">${store.list('todo').filter((t) => t.done).length}</span>
+        <span class="stat-label">완료해서 정리된 일</span>
+      </button>
     </div>
 
     ${openBranchesHtml(L)}
@@ -213,8 +197,15 @@ function graphHtml(L, allRows) {
   const x = (c) => PAD + (laneOf.get(c.branch) ?? 0) * LANE;
   const y = (c) => rowIndex.get(c.id) * ROW + ROW / 2;
 
-  let paths = '';
+  // main 줄기: 맨 위부터 "히스토리 시작"까지 한 줄로
+  const init = repo.commits[repo.branches[vcs.MAIN]];
+  let paths = `<path d="M${PAD} 0V${y(init)}" style="stroke:${MAIN_COLOR}"/>`;
   visible.forEach((c) => {
+    // 브랜치의 첫 기록: 한 줄 아래 main 줄기에서 갈라져 나옵니다.
+    if (vcs.START_KINDS.includes(c.kind)) {
+      const [x1, y1] = [x(c), y(c)];
+      paths += `<path d="M${x1} ${y1}C${x1} ${y1 + ROW / 2} ${PAD} ${y1 + ROW / 2} ${PAD} ${y1 + ROW}" style="stroke:${laneColor(laneOf.get(c.branch))}"/>`;
+    }
     c.parents.forEach((pid, k) => {
       const p = repo.commits[pid];
       if (!p) return;
@@ -241,8 +232,8 @@ function graphHtml(L, allRows) {
   const mainHead = repo.branches[vcs.MAIN];
   const nodes = visible
     .map((c) => {
-      const cls = c.id === mainHead ? 'head' : c.kind === 'remove' ? 'ended' : c.kind === 'merge' && c.parents.length > 1 ? 'merge' : '';
-      const r = cls === 'head' || cls === 'merge' ? 6.5 : 5;
+      const cls = c.id === mainHead ? 'head' : '';
+      const r = cls === 'head' ? 6.5 : 5;
       return `<circle class="node ${cls}" cx="${x(c)}" cy="${y(c)}" r="${r}" style="--c:${laneColor(laneOf.get(c.branch) ?? 0)}"/>`;
     })
     .join('');
@@ -344,24 +335,16 @@ function fullTime(iso) {
 }
 
 function detailHtml(L, c) {
-  const { repo, laneOf } = L;
+  const { laneOf } = L;
   const kind = KIND[c.kind];
   const color = laneColor(laneOf.get(c.branch) ?? 0);
   const task = c.taskId ? store.get('todo', c.taskId) : null;
-  const inTrash = c.taskId && !task && store.trashList().some((t) => t.item.id === c.taskId);
-  const branchOpen = c.branch !== vcs.MAIN && repo.branches[c.branch];
-
-  let branchText = 'main 줄기';
-  if (c.branch !== vcs.MAIN) {
-    if (branchOpen) branchText = '진행 중';
-    else {
-      const merged = Object.values(repo.commits).some((m) => m.parents[1] && repo.commits[m.parents[1]]?.branch === c.branch);
-      branchText = merged ? 'main에 합쳐짐' : '합치지 않고 종료됨';
-    }
-  }
+  const branchText = c.branch === vcs.MAIN ? 'main 줄기' : '진행 중';
 
   const kv = (label, value) => `<div class="cell"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
-  const changes = (c.changes || []).map((ch) => kv(esc(ch.label), `${esc(ch.from)} <span class="muted">→</span> <strong>${esc(ch.to)}</strong>`)).join('');
+  const changes = (c.changes || [])
+    .map((ch) => kv(esc(ch.label), ch.from ? `${esc(ch.from)} <span class="muted">→</span> <strong>${esc(ch.to)}</strong>` : `<strong>${esc(ch.to)}</strong>`))
+    .join('');
   const timeline = c.taskId
     ? vcs
         .taskCommits(c.taskId)
@@ -394,13 +377,5 @@ function detailHtml(L, c) {
         ? `<div class="section-head sub-head"><h3 class="section-title sm">이 할 일의 기록</h3></div><div class="inset">${timeline}</div>`
         : ''
     }
-    ${
-      task
-        ? `<button type="button" class="btn primary more-btn" data-open-task="${task.id}">${icon('check', 'sm')}할 일 열기</button>`
-        : inTrash
-          ? `<p class="muted small detail-note">이 할 일은 휴지통에 있어요.</p>`
-          : c.taskId
-            ? `<p class="muted small detail-note">이 할 일은 완전히 삭제됐어요.</p>`
-            : ''
-    }`;
+    ${task ? `<button type="button" class="btn primary more-btn" data-open-task="${task.id}">${icon('check', 'sm')}할 일 열기</button>` : ''}`;
 }

@@ -9,6 +9,7 @@ import { todayYmd, eventsOn } from './dates.js';
 import * as notify from './notify.js';
 import { applyTheme, getTheme, cycleTheme } from './theme.js';
 import { seedIfNeeded } from './samples.js';
+import { setupNavOrder } from './nav.js';
 import * as today from './today.js';
 import * as memo from './memo.js';
 import * as calendar from './calendar.js';
@@ -102,6 +103,7 @@ document.addEventListener('change', (e) => {
 
 // ---------- 시작 ----------
 applyTheme(getTheme()); // 배경 버튼 글자·아이콘 맞추기
+setupNavOrder(); // 사이드바 "보기" 메뉴: 저장한 순서 적용 + 끌어서 순서 바꾸기
 setupModal();
 store.cleanupTrash();
 seedIfNeeded(); // 처음 열 때 샘플 할 일 100개와 히스토리를 만듭니다

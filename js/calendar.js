@@ -12,17 +12,25 @@ import {
 import { rowsHtml as todoRowsHtml } from './todo.js';
 import { miniHtml as memoMiniHtml } from './memo.js';
 import { REMIND_OPTIONS, askIfNeeded } from './notify.js';
+import { extrasHtml, bindExtras, readExtras, extrasBadges } from './extras.js';
+
+// 일정의 메모는 예전부터 쓰던 desc 칸에, 리스트·체크리스트는 list·checklist 칸에 저장합니다.
+function eventExtras(form) {
+  const { note, list, checklist } = readExtras(form);
+  return { desc: note, list, checklist };
+}
 
 let mode = 'month'; // 'month' = 월간, 'week' = 주간
 let cursor = todayYmd(); // 지금 보고 있는 달/주의 기준 날짜
 let selected = todayYmd(); // 선택한 날짜
 
-// 그날의 일정·할 일·메모 (C-3, L-1: 마감일이 있는 할 일이 자동으로 들어옵니다)
+// 그날의 일정·할 일 (C-3, L-1: 마감일이 있는 할 일이 자동으로 들어옵니다)
+// 메모는 사이드바 보기에서 뺐으므로 캘린더에도 보여주지 않습니다. (다시 보이려면 아래 memos 줄을 바꾸세요)
 export function itemsOn(day) {
   return {
     events: eventsOn(store.list('event'), day),
     todos: store.list('todo').filter((t) => t.due === day),
-    memos: store.list('memo').filter((m) => isoToYmd(m.createdAt) === day),
+    memos: [], // store.list('memo').filter((m) => isoToYmd(m.createdAt) === day),
   };
 }
 
@@ -32,6 +40,7 @@ export function eventRowHtml(ev, day) {
     ev.endTime ? `~ ${fmtTime(ev.endTime)}` : '',
     ev.repeat && ev.repeat !== 'none' ? `<span title="${REPEAT_LABEL[ev.repeat]} 반복">${icon('repeat', 'sm')}</span>` : '',
     ev.remind !== '' && ev.remind != null ? `<span title="알림">${icon('bell', 'sm')}</span>` : '',
+    extrasBadges({ ...ev, note: ev.desc }),
   ].join('');
   return `
     <button type="button" class="cell event-cell" data-edit-event="${ev.id}" data-date="${day}">
@@ -77,7 +86,7 @@ function monthHtml() {
       day === selected ? 'selected' : '',
       d.getDay() === 0 ? 'sun' : '',
     ].join(' ');
-    const label = `${fmtDate(day)} 일정 ${events.length}개, 할 일 ${todos.length}개, 메모 ${memos.length}개`;
+    const label = `${fmtDate(day)} 일정 ${events.length}개, 할 일 ${todos.length}개`;
     cells += `
       <button type="button" class="${cls}" data-day="${day}" aria-label="${label}">
         <span class="num">${d.getDate()}</span>
@@ -165,7 +174,7 @@ function draw(el) {
       <button type="button" class="icon-btn" data-nav="1" aria-label="다음">${icon('chevR')}</button>
     </div>
     ${mode === 'month' ? monthHtml() : weekHtml()}
-    <div class="legend"><span><i class="dot d-ev"></i>일정</span><span><i class="dot d-todo"></i>할 일</span><span><i class="dot d-memo"></i>메모</span></div>`;
+    <div class="legend"><span><i class="dot d-ev"></i>일정</span><span><i class="dot d-todo"></i>할 일</span></div>`;
 }
 
 // 제목 아래 설명: 보고 있는 달의 일정·할 일 수
@@ -205,9 +214,7 @@ export function openEditor(id, preset = {}) {
       <label class="field"><span>반복</span><select name="repeat">${options(REPEAT_LABEL, d.repeat || 'none')}</select></label>
       <label class="field"><span>알림</span><select name="remind">${options(REMIND_OPTIONS, String(d.remind ?? ''))}</select></label>
     </div>
-    <label class="field"><span>메모</span>
-      <textarea name="desc" rows="3" placeholder="장소, 준비물 등">${esc(d.desc || '')}</textarea>
-    </label>
+    ${extrasHtml({ ...d, note: d.desc })}
     ${ev && ev.repeat && ev.repeat !== 'none' ? '<p class="muted small">반복 일정을 고치면 모든 회차가 함께 바뀌어요.</p>' : ''}
     ${ev ? `<div class="linked">${chipsHtml(ev)}</div>` : ''}`;
 
@@ -241,7 +248,7 @@ export function openEditor(id, preset = {}) {
         endTime: val(form, 'endTime'),
         repeat: form.elements.repeat.value,
         remind: form.elements.remind.value,
-        desc: form.elements.desc.value.trim(),
+        ...eventExtras(form),
       };
       if (!fields.title) {
         toast('일정 제목을 입력해 주세요');
@@ -267,7 +274,7 @@ export function openEditor(id, preset = {}) {
     },
   });
 
-  openModal({ title: ev ? '일정 수정' : '새 일정', body, actions });
+  openModal({ title: ev ? '일정 수정' : '새 일정', body, actions, onOpen: bindExtras });
 }
 
 registerEditor('event', openEditor);
