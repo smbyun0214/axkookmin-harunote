@@ -348,6 +348,7 @@ function detailHtml(L, c) {
   const timeline = c.taskId
     ? vcs
         .taskCommits(c.taskId)
+        .reverse() // 최신 기록이 위로
         .map(
           (t) => `
           <button type="button" class="cell ${t.id === c.id ? 'sel' : ''}" data-commit="${t.id}">
